@@ -107,6 +107,23 @@ lab-000601
 
 ---
 
+**Q3 — requests status**
+
+```bash
+# Count requests per status code (deduplicated, ignoring malformed line)
+sort -u logs/access.log | jq -Rr 'fromjson? | .status // empty' | sort | uniq -c
+```
+Output:
+```
+    615 200
+     10 404
+     40 502
+     47 503
+      8 504
+```
+
+---
+
 ## Results
 
 **Q1** 
@@ -133,6 +150,23 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 - **Malformed line handling:** Line 311 is truncated before writing `request_id`. Because the integer ID sequence between `lab-000001` and `lab-000720` is 100% complete with no missing numbers, line 311 is an aborted write rather than an uncounted 721st request.
 
 ---
+
+**Q3 — final status counts and error rate**
+- **Final client status counts** (after deduplicating 5 duplicate log lines):
+  - `200 OK`: **615** (85.4%)
+  - `404 Not Found`: **10** (1.4%)
+  - `502 Bad Gateway`: **40** (5.6%)
+  - `503 Service Unavailable`: **47** (6.5%)
+  - `504 Gateway Timeout`: **8** (1.1%)
+  - *Summary by category:* `2xx` (Success): 615, `4xx` (Client Error): 10, `5xx` (Proxy/Server Error): 95
+
+- **Error rate denominator:** **720** total distinct client requests.
+- **Server Error rate (5xx only):** 95 errors / 720 requests = **13.2%** (40 Bad Gateway + 47 Service Unavailable + 8 Gateway Timeout)
+- **Client Error rate (4xx only):** 10 errors / 720 requests = **1.4%** (10 Not Found)
+- **Total HTTP Error rate (4xx + 5xx):** 105 errors / 720 requests = **14.6%**
+
+---
+
 ## Timeline and correlated examples
 
 ## Conclusions and limits
