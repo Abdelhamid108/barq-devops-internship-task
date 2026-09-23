@@ -81,9 +81,35 @@ Output:
 
 ---
 
+**Q2 — valid requests, deduplication and retries**
+
+```bash 
+# Calculate distinct client requests occurred
+jq -Rr 'fromjson? | .request_id // empty' logs/access.log | sort -u | wc -l
+```
+Output:
+```
+720
+```
+
+```bash
+# Show duplicated request IDs
+jq -Rr 'fromjson? | .request_id // empty' logs/access.log | sort | uniq -d
+```
+Output:
+```
+lab-000121
+lab-000241
+lab-000361
+lab-000481
+lab-000601
+```
+
+---
+
 ## Results
 
-**Q1 — UTC Interval and Line Quality**
+**Q1** 
 
 Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~30 minutes)
 
@@ -100,6 +126,13 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 
 ---
 
+**Q2 — distinct client requests**
+- **Total:** 720 distinct client requests (`lab-000001` through `lab-000720`).
+- **Deduplication:** 5 duplicate lines were detected (`lab-000121`, `lab-000241`, `lab-000361`, `lab-000481`, `lab-000601`) via `sort | uniq -d`. These were exact byte-for-byte duplicate log flushes (identical timestamps, payloads, and single upstream status 200), not retried requests, and were excluded using `sort -u`.
+- **Handling of retries:** NGINX logs upstream reverse-proxy retries within a **single access log entry** using comma-separated upstreams and statuses (e.g. `"upstream_status": "502, 200"` for `lab-000124`). Because retries do not generate separate log lines in `access.log`, counting distinct client `request_id`s inherently avoids counting retries twice.
+- **Malformed line handling:** Line 311 is truncated before writing `request_id`. Because the integer ID sequence between `lab-000001` and `lab-000720` is 100% complete with no missing numbers, line 311 is an aborted write rather than an uncounted 721st request.
+
+---
 ## Timeline and correlated examples
 
 ## Conclusions and limits
