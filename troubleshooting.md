@@ -35,6 +35,52 @@ Keep chronological entries. Copy this block for each meaningful investigation.
 
 ---
 
+## Entry 02 / 24/09/2026 / 9:20 AM
+- Symptom: After applying the health-check fix and completing the log analysis, testing the live environment showed that the application was unable to serve traffic on the root endpoint /. 
+- Hypothesis: NGINX is not correctly accepting HTTP traffic on port 8080.
+- Command or test: 
+```bash 
+  curl -i -v http://localhost:8080/ 
+```
+- Actual output:
+```text
+> GET / HTTP/1.1
+> Host: localhost:8080
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+* Recv failure: Connection reset by peer
+* Closing connection
+curl: (56) Recv failure: Connection reset by peer
+```
+- Failed attempt and what changed your thinking: The connection to localhost:8080 was established, but the server reset the connection before returning an HTTP response. I checked the NGINX logs but found no corresponding request or error. I then inspected the container port mapping and found that Docker was forwarding host port 8080 to container port 81. I checked the NGINX configuration and confirmed that NGINX was listening on port 80, not 81. This revealed a mismatch between the Docker port mapping and the port on which NGINX was actually listening. 
+- Root cause: A port mismatch between the Docker Compose configuration and the NGINX configuration: Docker forwarded traffic from host port 8080 to container port 81, while NGINX was listening on port 80.
+- Fix: Corrected the Docker Compose port mapping to forward traffic from host port 8080 to container port 80 instead of 81.
+- Retest evidence: After applying the fix, the connection reached NGINX successfully, which returned HTTP/1.1 502 Bad Gateway with Server: nginx/1.28.3. This confirms that the port-mapping issue was resolved, but the application still has an upstream/backend issue that requires further investigation.
+  ```bash
+  curl -i http://localhost:8080/
+  ```
+  Output:
+  ```text
+  HTTP/1.1 502 Bad Gateway
+  Server: nginx/1.28.3
+  Date: Thu, 24 Sep 2026 05:43:51 GMT
+  Content-Type: text/html
+  Content-Length: 157
+  Connection: keep-alive
+
+  <html>
+  <head><title>502 Bad Gateway</title></head>
+  <body>
+  <center><h1>502 Bad Gateway</h1></center>
+  <hr><center>nginx/1.28.3</center>
+  </body>
+  </html>
+  ```
+- Related commit:
+- Remaining uncertainty: The remaining 502 Bad Gateway indicates that NGINX cannot successfully communicate with the upstream application/backend. The exact upstream cause has not yet been established and requires further investigation.
+
+---
 ## Entry / date / time
 - Symptom:
 - Hypothesis:
