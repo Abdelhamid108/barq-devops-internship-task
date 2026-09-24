@@ -208,7 +208,43 @@ output:
 2026-08-20T11:00:00.015Z
 2026-08-20T11:29:37.522Z
 ```
+---
 
+**Q5 — median and p95 client latencies**
+
+```python
+# percentile.py — Calculate median and p95 client latency across distinct requests
+#!/usr/bin/env python3
+import json
+import numpy as np
+
+data = []
+file_path = "logs/access.log"
+for l in sorted(set(open(file_path))):
+    try:
+        val = json.loads(l).get("request_time")
+        if val is not None:
+            data.append(float(val))
+    except:
+        pass
+
+data.sort()
+n = len(data)
+p50 = np.percentile(data, 50)
+p95 = np.percentile(data, 95)
+
+print(f"Total requests: {n}")
+print(f"Median (P50): {p50:.3f} s ({p50 * 1000:.1f} ms)")
+print(f"P95: {p95:.3f} s ({p95 * 1000:.1f} ms)")
+```
+Output:
+```
+Total requests: 720
+Median (P50): 0.054 s (54.0 ms)
+P95: 2.001 s (2001.0 ms)
+```
+
+---
 ## Results
 
 **Q1** 
@@ -263,6 +299,20 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 
 - **Paths summary:** `/records` (26 5xx) and `/counter` (26 5xx) experienced the highest server failures, followed by `/ready` (23 5xx), `/health` (10 5xx), and `/` (10 5xx).
 - **Backends summary:** `172.23.0.12:8080` (`app-02`) accounted for **68 server failures** (71.6%), including 100% of the `502` errors. `172.23.0.11:8080` (`app-01`) accounted for **27 server failures** (28.4%), only encountering `503` and `504` errors.
+
+---
+
+**Q5 — median and p95 client latencies**
+
+- **Dataset evaluated:** 720 distinct client requests (from `logs/access.log`, deduplicated).
+- **Metric measured:** NGINX `request_time` (total elapsed time from receiving the first request byte to sending the final response byte).
+- **Units:** Recorded in **seconds (`s`)**, reported in both **seconds (`s`)** and **milliseconds (`ms`)**.
+- **Percentile method:** **Linear interpolation** via NumPy (`np.percentile`). *(Yields identical values to the Nearest-Rank method rank 684 / 720)*.
+
+| Latency Metric | Seconds (`s`) | Milliseconds (`ms`) | Method |
+|---|---|---|---|
+| **Median (P50)** | `0.054 s` | `54.0 ms` | 50th percentile (NumPy linear interpolation) |
+| **P95** | `2.001 s` | `2001.0 ms` | 95th percentile (NumPy linear interpolation) |
 
 ---
 
