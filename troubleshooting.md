@@ -81,6 +81,60 @@ curl: (56) Recv failure: Connection reset by peer
 - Remaining uncertainty: The remaining 502 Bad Gateway indicates that NGINX cannot successfully communicate with the upstream application/backend. The exact upstream cause has not yet been established and requires further investigation.
 
 ---
+## Entry 03 / 24/09/2026 / 9:52 AM
+
+- Symptom: After fixing the Docker-to-NGINX port mapping, the application root endpoint / returned HTTP 502 Bad Gateway from NGINX.
+- Hypothesis: NGINX is unable to successfully communicate with the upstream application/backend.
+- Command or test: 
+```bash 
+curl -i http://localhost:8080/
+``` 
+- Actual output:
+ ```text
+  HTTP/1.1 502 Bad Gateway
+  Server: nginx/1.28.3
+  Date: Thu, 24 Sep 2026 05:43:51 GMT
+  Content-Type: text/html
+  Content-Length: 157
+  Connection: keep-alive
+
+  <html>
+  <head><title>502 Bad Gateway</title></head>
+  <body>
+  <center><h1>502 Bad Gateway</h1></center>
+  <hr><center>nginx/1.28.3</center>
+  </body>
+  </html>
+  ```
+- Failed attempt and what changed your thinking: Initially, one application was being forwarded to port 81, while the other application used port 8080. I suspected that the different upstream port might be causing the 502 error, so I changed the NGINX upstream configuration to use port 8080 to verify whether both applications had the same issue.
+
+After the change, the 502 response still occurred. The NGINX logs showed Connection refused when connecting to 10.0.5.3:8080. I then tested the upstream directly with curl, which also returned Connection refused.
+
+I then checked the application logs and found that the health check was working correctly, but the application was listening on 127.0.0.1:8080. This changed my thinking from an NGINX port configuration problem to a connectivity/binding problem. The application was running, but it was only listening on the container's loopback interface, so it was not accepting connections through its Docker network IP.
+- Root cause: The application was bound to 127.0.0.1:8080 instead of 0.0.0.0:8080. Therefore, NGINX could reach the application's container IP (10.0.5.3) but the application was not listening on that network interface, resulting in Connection refused and consequently 502 Bad Gateway.
+- Fix: Updated the `APP_HOST` environment variable from `"127.0.0.1"` to `"0.0.0.0"` in `docker-compose.yml`, and corrected the upstream port from `app-01:8081` to `app-01:8080` in `nginx/nginx.conf`.
+- Retest evidence:
+```bash
+curl -i http://localhost:8080/
+```
+Output: 
+```text
+HTTP/1.1 200 OK
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 13:34:18 GMT
+Content-Type: application/json
+Content-Length: 100
+Connection: keep-alive
+X-Instance-ID: app-01
+X-Request-ID: 48c8ca47f978b60cdfa7acae2fd994ed
+Cache-Control: no-store
+
+{"instance_id":"app-01","message":"Welcome to BARQ Systems","service":"barq-api","version":"2.0.0"}
+```
+- Related commit: 
+- Remaining uncertainty: The fix was verified through app-01, but app-02 has not yet been independently verified. Additionally, only the root endpoint (/) has been tested; dependency-backed endpoints (/ready, /records, /counter) still require verification.
+
+---
 ## Entry / date / time
 - Symptom:
 - Hypothesis:
