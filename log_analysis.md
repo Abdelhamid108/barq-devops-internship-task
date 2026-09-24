@@ -338,6 +338,49 @@ Output:
 {"timestamp":"2026-08-20T11:21:45.040Z","request_id":"lab-000523","instance_id":"app-01","error_type":"InvalidPassword"}
 ```
 
+---
+
+**Q8 — correlated request examples**
+
+```bash
+# 1. Identify a failed request ID from access.log (status 503)
+jq -Rr 'fromjson? | select(.status == 503) | .request_id' logs/access.log | head -n 1
+```
+Output:
+```
+lab-000292
+```
+
+```bash
+# 2. Correlate the failed request (lab-000292) across all logs
+grep "lab-000292" logs/access.log logs/error.log logs/application.log
+```
+Output:
+```
+logs/access.log:{"timestamp":"2026-08-20T11:12:09.525Z","request_id":"lab-000292","method":"GET","path":"/ready","status":503,"upstream":"172.23.0.12:8080","upstream_status":"503","request_time":2.025,"client":"192.0.2.24"}
+logs/application.log:{"timestamp": "2026-08-20T11:12:09.524Z", "level": "ERROR", "event": "dependency_error", "request_id": "lab-000292", "instance_id": "app-02", "dependency": "redis", "error_type": "TimeoutError"}
+logs/application.log:{"timestamp": "2026-08-20T11:12:09.525Z", "level": "WARN", "event": "http_request", "request_id": "lab-000292", "instance_id": "app-02", "method": "GET", "path": "/ready", "status": 503, "duration_ms": 2025.0}
+```
+
+```bash
+# 3. Identify a successful request ID from access.log (status 200)
+jq -Rr 'fromjson? | select(.status == 200) | .request_id' logs/access.log | head -n 1
+```
+Output:
+```
+lab-000002
+```
+
+```bash
+# 4. Correlate the successful request (lab-000002) across all logs
+grep "lab-000002" logs/access.log logs/error.log logs/application.log
+```
+Output:
+```
+logs/access.log:{"timestamp":"2026-08-20T11:00:02.532Z","request_id":"lab-000002","method":"GET","path":"/health","status":200,"upstream":"172.23.0.12:8080","upstream_status":"200","request_time":0.032,"client":"192.0.2.24"}
+logs/application.log:{"timestamp": "2026-08-20T11:00:02.532Z", "level": "INFO", "event": "http_request", "request_id": "lab-000002", "instance_id": "app-02", "method": "GET", "path": "/health", "status": 200, "duration_ms": 32.0}
+```
+
 ## Results
 
 **Q1** 
@@ -435,6 +478,30 @@ Correlating `access.log`, `error.log`, and `application.log` reveals **4 failure
 | **2** | `11:12:09 — 11:15:52` | 0 lines | 31 `503`s on `/counter` (16) and `/ready` (15); `request_time`: 2.019s–2.035s | 31 ERROR lines: `dependency: redis`, `error_type: TimeoutError` | `11:16:07.534Z` (`lab-000388`, `/ready`, 200) |
 | **3** | `11:20:07 — 11:21:45` | 0 lines | 16 `503`s on `/records` (8) and `/ready` (8); `request_time`: 0.021s–0.088s | 16 ERROR lines: `dependency: postgres`, `error_type: InvalidPassword` | `11:22:07.582Z` (`lab-000532`, `/ready`, 200) |
 | **4** | `11:25:14 — 11:26:47` | 8 lines: `upstream timed out` on `/records` | 8 `504`s on `/records`; `request_time`: 2.001s | 8 lines for `/records`: `status: 200`, `duration_ms: 2700.0` | `11:27:12.576Z` (`lab-000654`, `/records`, 200) |
+
+---
+
+**Q8 — correlated request examples**
+
+#### 1. Correlated Failed Request: `lab-000292`
+- **Request ID:** `lab-000292`
+- **Path & Method:** `GET /ready`
+- **Target Backend:** `172.23.0.12:8080` (`app-02`)
+- **Evidence across logs:**
+  - **`access.log`** (`2026-08-20T11:12:09.525Z`): `status: 503`, `upstream: "172.23.0.12:8080"`, `upstream_status: "503"`, `request_time: 2.025s`.
+  - **`application.log`**:
+    - `2026-08-20T11:12:09.524Z`: `level: "ERROR"`, `event: "dependency_error"`, `instance_id: "app-02"`, `dependency: "redis"`, `error_type: "TimeoutError"`.
+    - `2026-08-20T11:12:09.525Z`: `level: "WARN"`, `event: "http_request"`, `instance_id: "app-02"`, `status: 503`, `duration_ms: 2025.0`.
+  - **`error.log`**: 0 entries logged (the application returned an HTTP 503 response, so NGINX did not encounter an upstream socket or proxy error).
+
+#### 2. Correlated Successful Request: `lab-000002`
+- **Request ID:** `lab-000002`
+- **Path & Method:** `GET /health`
+- **Target Backend:** `172.23.0.12:8080` (`app-02`)
+- **Evidence across logs:**
+  - **`access.log`** (`2026-08-20T11:00:02.532Z`): `status: 200`, `upstream: "172.23.0.12:8080"`, `upstream_status: "200"`, `request_time: 0.032s`.
+  - **`application.log`** (`2026-08-20T11:00:02.532Z`): `level: "INFO"`, `instance_id: "app-02"`, `status: 200`, `duration_ms: 32.0`.
+  - **`error.log`**: 0 entries logged (NGINX logs errors/notices only; normal 200 responses produce no error logs).
 
 ---
 
