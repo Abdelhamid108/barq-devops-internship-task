@@ -124,6 +124,91 @@ Output:
 
 ---
 
+**Q4 — failure paths, time windows, and backends**
+
+```bash
+# print paths and upstreams for 502 errors only
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.status == 502) | "\(.status) \(.path) \(.upstream)"' | sort | uniq -c | sort -nr 
+```
+output:
+```
+     10 502 /records 172.23.0.12:8080
+     10 502 /health 172.23.0.12:8080
+     10 502 /counter 172.23.0.12:8080
+     10 502 / 172.23.0.12:8080
+```
+```bash 
+# time window for 502 errors
+jq -Rr 'fromjson? | select(.status == 502) | .timestamp' logs/access.log |
+sort | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+Output:
+```
+2026-08-20T11:05:02.503Z
+2026-08-20T11:09:57.503Z
+```
+```bash
+# print paths and upstreams for 503 errors only
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.status == 503) | "\(.status) \(.path) \(.upstream)"' | sort | uniq -c | sort -nr
+```
+output:
+```
+     12 503 /ready 172.23.0.12:8080
+     11 503 /ready 172.23.0.11:8080
+      8 503 /counter 172.23.0.12:8080
+      8 503 /counter 172.23.0.11:8080
+      4 503 /records 172.23.0.12:8080
+      4 503 /records 172.23.0.11:8080
+```
+```bash
+# time window for 503 errors
+jq -Rr 'fromjson? | select(.status == 503) | .timestamp' logs/access.log |
+sort | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+Output:
+```
+2026-08-20T11:12:09.525Z
+2026-08-20T11:21:45.041Z
+```
+```bash
+# print paths and upstreams for 504 errors only
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.status == 504) | "\(.status) \(.path) \(.upstream)"' | sort | uniq -c | sort -nr
+```
+output:
+```
+      4 504 /records 172.23.0.12:8080
+      4 504 /records 172.23.0.11:8080
+```
+```bash
+# time window for 504 errors
+jq -Rr 'fromjson? | select(.status == 504) | .timestamp' logs/access.log |
+sort | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+Output:
+```
+2026-08-20T11:25:14.501Z
+2026-08-20T11:26:47.001Z
+```
+```bash
+# print paths and upstreams for 404 errors only
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.status == 404) | "\(.status) \(.path) \(.upstream)"' | sort | uniq -c | sort -nr
+```
+output:
+```
+      5 404 /missing 172.23.0.12:8080
+      5 404 /missing 172.23.0.11:8080
+```
+```bash
+# time window for 404 errors
+jq -Rr 'fromjson? | select(.status == 404) | .timestamp' logs/access.log |
+sort | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+output:
+```
+2026-08-20T11:00:00.015Z
+2026-08-20T11:29:37.522Z
+```
+
 ## Results
 
 **Q1** 
@@ -164,6 +249,20 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 - **Server Error rate (5xx only):** 95 errors / 720 requests = **13.2%** (40 Bad Gateway + 47 Service Unavailable + 8 Gateway Timeout)
 - **Client Error rate (4xx only):** 10 errors / 720 requests = **1.4%** (10 Not Found)
 - **Total HTTP Error rate (4xx + 5xx):** 105 errors / 720 requests = **14.6%**
+
+---
+
+**Q4 — failure paths, time windows, and backends**
+
+| Failure Status | Count | Affected Paths | Time Window (UTC) | Affected Backend(s) |
+|---|---|---|---|---|
+| `502 Bad Gateway` | 40 | `/records` (10), `/health` (10), `/counter` (10), `/` (10) | `11:05:02 — 11:09:57` | `172.23.0.12:8080` (40) |
+| `503 Service Unavailable` | 47 | `/ready` (23), `/counter` (16), `/records` (8) | `11:12:09 — 11:21:45` | `172.23.0.11:8080` (23), `172.23.0.12:8080` (24) |
+| `504 Gateway Timeout` | 8 | `/records` (8) | `11:25:14 — 11:26:47` | `172.23.0.11:8080` (4), `172.23.0.12:8080` (4) |
+| `404 Not Found` | 10 | `/missing` (10) | `11:00:00 — 11:29:37` | `172.23.0.11:8080` (5), `172.23.0.12:8080` (5) |
+
+- **Paths summary:** `/records` (26 5xx) and `/counter` (26 5xx) experienced the highest server failures, followed by `/ready` (23 5xx), `/health` (10 5xx), and `/` (10 5xx).
+- **Backends summary:** `172.23.0.12:8080` (`app-02`) accounted for **68 server failures** (71.6%), including 100% of the `502` errors. `172.23.0.11:8080` (`app-01`) accounted for **27 server failures** (28.4%), only encountering `503` and `504` errors.
 
 ---
 
