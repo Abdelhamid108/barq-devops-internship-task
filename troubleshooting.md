@@ -135,6 +135,19 @@ Cache-Control: no-store
 - Remaining uncertainty: The fix was verified through app-01, but app-02 has not yet been independently verified. Additionally, only the root endpoint (/) has been tested; dependency-backed endpoints (/ready, /records, /counter) still require verification.
 
 ---
+## Entry 04 / 24/09/2026 / 9:59 AM
+- Symptom: he application endpoints were working, but every response returned app-01 as the instance ID. I expected requests to be served by both app-01 and app-02
+- Hypothesis: The issue could be caused by either the application having the instance ID hardcoded or NGINX not correctly routing requests to both backend instances.
+- Command or test:
+- Actual output:
+- Failed attempt and what changed your thinking:
+- Root cause:
+- Fix:
+- Retest evidence:
+- Related commit:
+- Remaining uncertainty:
+
+---
 ## Entry / date / time
 - Symptom:
 - Hypothesis:
@@ -147,4 +160,4 @@ Cache-Control: no-store
 - Related commit:
 - Remaining uncertainty:
 
-Do not fabricate a failed attempt just to fill the template. Record actual attempts.
+  Do not fabricate a failed attempt just to fill the template. Record actual attempts.
