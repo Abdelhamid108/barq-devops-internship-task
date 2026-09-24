@@ -131,7 +131,7 @@ Cache-Control: no-store
 
 {"instance_id":"app-01","message":"Welcome to BARQ Systems","service":"barq-api","version":"2.0.0"}
 ```
-- Related commit: 
+- Related commit: `20a9ac` (fix(compose,nginx.conf): bind app to 0.0.0.0 and correct upstream port to 8080 for app-01 in nginx.conf) 
 - Remaining uncertainty: The fix was verified through app-01, but app-02 has not yet been independently verified. Additionally, only the root endpoint (/) has been tested; dependency-backed endpoints (/ready, /records, /counter) still require verification.
 
 ---
