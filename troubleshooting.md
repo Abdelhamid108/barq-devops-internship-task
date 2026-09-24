@@ -199,12 +199,11 @@ Cache-Control: no-store
 
 ---
 ## Entry 05 / 24/09/2026 / 7:38 PM
-- Symptom: : The /ready endpoint returns HTTP 503 Service Unavailable. The response shows that both PostgreSQL and Redis are reported as unavailable, and the barq_api status is not_ready.
-- Hypothesis: coonectivity error between app and it dependecy can be due to incorrect ip adresses or ports  
+- Symptom: The /ready endpoint returns HTTP 503 Service Unavailable. Both PostgreSQL and Redis are reported as "unavailable", and the barq-api status is "not_ready".
+- Hypothesis: Connectivity error between the application and its dependencies, likely caused by incorrect hostnames or port configurations in the environment file.
 - Command or test:
-```
+```bash
 curl -i http://127.0.0.1:8080/ready
-
 ```
 - Actual output:
 ```text
@@ -220,20 +219,53 @@ Cache-Control: no-store
 
 {"dependencies":{"postgres":"unavailable","redis":"unavailable"},"instance_id":"app-01","service":"barq-api","status":"not_ready","version":"2.0.0"}
 ```
-
-- Failed attempt and what changed your thinking: 
-- Fix:
+- Failed attempt and what changed your thinking: No failed attempt. The investigation compared the dependency ports configured in `config/app.env` (`DATABASE_URL` using 5433 and `REDIS_URL` using 6380) with the container ports in `docker-compose.yml` (PostgreSQL 5432 and Redis 6379) and identified a configuration mismatch.
+- Root cause: The PostgreSQL and Redis connection URLs in `config/app.env` used incorrect port numbers (5433 and 6380) instead of their default container listening ports (5432 and 6379). As a result, the application could not establish network connections to either dependency.
+- Fix: Corrected the PostgreSQL port to 5432 and the Redis port to 6379 in `config/app.env`, then recreated the application containers.
 - Retest evidence:
-- Related commit:
-- Remaining uncertainty:
+```bash
+curl -i http://127.0.0.1:8080/ready
+```
+```text
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 17:42:57 GMT
+Content-Type: application/json
+Content-Length: 143
+Connection: keep-alive
+X-Instance-ID: app-01
+X-Request-ID: 47414ea84c98cd85a9a70dca8e8a841b
+Cache-Control: no-store
+
+{"dependencies":{"postgres":"unavailable","redis":"ready"},"instance_id":"app-01","service":"barq-api","status":"not_ready","version":"2.0.0"}
+```
+- Related commit: `2c3af55` (fix(app): correct PostgreSQL and Redis ports in app.env)
+- Remaining uncertainty: Redis connectivity is confirmed functional (`"redis": "ready"`), but PostgreSQL still reports an operational/authentication error resulting in HTTP 503. Further investigation is required to resolve the PostgreSQL failure and test the remaining application endpoints.
+
 
 ---
-## Entry / date / time
-- Symptom:
-- Hypothesis:
+## Entry 06 / 24/09/2026 / 8:53 PM
+- Symptom: After correcting the PostgreSQL and Redis port configuration, the application can reach the PostgreSQL service, but the /ready endpoint still returns HTTP 503 Service Unavailable because PostgreSQL is reported as unavailable due to an operational error.  
+- Hypothesis: PostgreSQL connectivity has been restored, but the application is encountering a database-level error when performing the required database operation.
 - Command or test:
+```bash
+curl -i http://127.0.0.1:8080/ready
+```
 - Actual output:
-- Failed attempt and what changed your thinking:
+```text
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 17:57:23 GMT
+Content-Type: application/json
+Content-Length: 143
+Connection: keep-alive
+X-Instance-ID: app-02
+X-Request-ID: 7b7e123688faced4dbf49a73c0c6d0cf
+Cache-Control: no-store
+
+{"dependencies":{"postgres":"unavailable","redis":"ready"},"instance_id":"app-02","service":"barq-api","status":"not_ready","version":"2.0.0"}
+```
+- Failed attempt and what changed your thinking: No failed attempt. After confirming that PostgreSQL connectivity was restored, I checked the PostgreSQL logs to investigate the remaining operational error. The logs showed an authentication failure, which narrowed the investigation from connectivity to PostgreSQL authentication/configuration.
 - Root cause:
 - Fix:
 - Retest evidence:
