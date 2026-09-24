@@ -245,6 +245,46 @@ P95: 2.001 s (2001.0 ms)
 ```
 
 ---
+
+**Q6 — upstream retries**
+
+```bash
+# Show requests with multiple upstream responses 
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.upstream | contains(",")) | "\(.request_id) \(.path) status=\(.status) upstream_status=[\(.upstream_status)]"'
+```
+Output:
+```
+lab-000124 /ready status=200 upstream_status=[502, 200]
+lab-000130 /instance status=200 upstream_status=[502, 200]
+lab-000136 /ready status=200 upstream_status=[502, 200]
+lab-000142 /instance status=200 upstream_status=[502, 200]
+lab-000148 /ready status=200 upstream_status=[502, 200]
+lab-000154 /instance status=200 upstream_status=[502, 200]
+lab-000160 /ready status=200 upstream_status=[502, 200]
+lab-000166 /instance status=200 upstream_status=[502, 200]
+lab-000172 /ready status=200 upstream_status=[502, 200]
+lab-000178 /instance status=200 upstream_status=[502, 200]
+lab-000184 /ready status=200 upstream_status=[502, 200]
+lab-000190 /instance status=200 upstream_status=[502, 200]
+lab-000196 /ready status=200 upstream_status=[502, 200]
+lab-000202 /instance status=200 upstream_status=[502, 200]
+lab-000208 /ready status=200 upstream_status=[502, 200]
+lab-000214 /instance status=200 upstream_status=[502, 200]
+lab-000220 /ready status=200 upstream_status=[502, 200]
+lab-000226 /instance status=200 upstream_status=[502, 200]
+lab-000232 /ready status=200 upstream_status=[502, 200]
+```
+
+```bash 
+# Count total retries and check their final status
+sort -u logs/access.log | jq -Rr 'fromjson? | select(.upstream | contains(",")) | .status' | sort | uniq -c
+```
+Output:
+```
+     19 200
+```
+
+---
 ## Results
 
 **Q1** 
@@ -307,12 +347,26 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 - **Dataset evaluated:** 720 distinct client requests (from `logs/access.log`, deduplicated).
 - **Metric measured:** NGINX `request_time` (total elapsed time from receiving the first request byte to sending the final response byte).
 - **Units:** Recorded in **seconds (`s`)**, reported in both **seconds (`s`)** and **milliseconds (`ms`)**.
-- **Percentile method:** **Linear interpolation** via NumPy (`np.percentile`). *(Yields identical values to the Nearest-Rank method rank 684 / 720)*.
+- **Percentile method:** **Linear interpolation** via NumPy (`np.percentile`).
 
 | Latency Metric | Seconds (`s`) | Milliseconds (`ms`) | Method |
 |---|---|---|---|
 | **Median (P50)** | `0.054 s` | `54.0 ms` | 50th percentile (NumPy linear interpolation) |
 | **P95** | `2.001 s` | `2001.0 ms` | 95th percentile (NumPy linear interpolation) |
+
+---
+
+**Q6 — upstream retries and success rate**
+
+- **Total retried requests:** Exactly **19 requests** retried upstream.
+- **Success rate after retrying:** **19 out of 19 (100%)** succeeded with final client status `200 OK`.
+- **Retried paths & Request IDs:** Retries occurred **exclusively on two endpoints**:
+  - `/ready` (10 requests): `lab-000124`, `lab-000136`, `lab-000148`, `lab-000160`, `lab-000172`, `lab-000184`, `lab-000196`, `lab-000208`, `lab-000220`, `lab-000232`
+  - `/instance` (9 requests): `lab-000130`, `lab-000142`, `lab-000154`, `lab-000166`, `lab-000178`, `lab-000190`, `lab-000202`, `lab-000214`, `lab-000226`
+- **Failover Observation:**
+  - During the `11:05:02 — 11:09:57` outage when `app-02` (`172.23.0.12:8080`) went down, `/ready` and `/instance` were the **only endpoints** where upstream retries occurred.
+  - When these 19 requests initially hit `app-02` and faced a `502` connection refusal, NGINX failed over to `app-01` (`172.23.0.11:8080`), where all 19 retried and passed successfully (`upstream_status=[502, 200]`, final status `200`).
+  - The other 40 requests routed to `app-02` during this window (`/`, `/health`, `/records`, `/counter`) were not retried and resulted in `502 Bad Gateway`.
 
 ---
 
