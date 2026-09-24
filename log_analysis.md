@@ -285,6 +285,59 @@ Output:
 ```
 
 ---
+
+**Q7 — incident timeline**
+
+```bash
+# First and last "Connection refused" in error.log
+grep "Connection refused" logs/error.log | awk '{print $1, $2}' | sed -n '1p;$p'
+```
+Output:
+```
+2026/08/20 11:05:02
+2026/08/20 11:09:57
+```
+
+```bash
+# First and last "upstream timed out" in error.log
+grep "upstream timed out" logs/error.log | awk 'NR==1 {first=$1" "$2} {last=$1" "$2} END {print first; print last}'
+```
+Output:
+```
+2026/08/20 11:25:14
+2026/08/20 11:26:47
+```
+
+```bash
+# First and last ERROR level events in application.log
+jq -c -Rr 'fromjson? | select(.level == "ERROR") | {timestamp, request_id, instance_id, dependency, error_type}' logs/application.log | sed -n '1p;$p'
+```
+Output:
+```
+{"timestamp":"2026-08-20T11:12:09.524Z","request_id":"lab-000292","instance_id":"app-02","dependency":"redis","error_type":"TimeoutError"}
+{"timestamp":"2026-08-20T11:21:45.040Z","request_id":"lab-000523","instance_id":"app-01","dependency":"postgres","error_type":"InvalidPassword"}
+```
+
+```bash
+# First and last redis dependency errors in application.log
+jq -c -Rr 'fromjson? | select(.dependency == "redis") | {timestamp, request_id, instance_id, error_type}' logs/application.log | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+Output:
+```
+{"timestamp":"2026-08-20T11:12:09.524Z","request_id":"lab-000292","instance_id":"app-02","error_type":"TimeoutError"}
+{"timestamp":"2026-08-20T11:15:52.024Z","request_id":"lab-000381","instance_id":"app-01","error_type":"TimeoutError"}
+```
+
+```bash
+# First and last postgres dependency errors in application.log
+jq -c -Rr 'fromjson? | select(.dependency == "postgres") | {timestamp, request_id, instance_id, error_type}' logs/application.log | awk 'NR==1 {first=$0} {last=$0} END {print first; print last}'
+```
+Output:
+```
+{"timestamp":"2026-08-20T11:20:07.540Z","request_id":"lab-000484","instance_id":"app-02","error_type":"InvalidPassword"}
+{"timestamp":"2026-08-20T11:21:45.040Z","request_id":"lab-000523","instance_id":"app-01","error_type":"InvalidPassword"}
+```
+
 ## Results
 
 **Q1** 
@@ -371,5 +424,18 @@ Overall observation window: **2026-08-20T11:00:00Z → 2026-08-20T11:30:00Z** (~
 ---
 
 ## Timeline and correlated examples
+
+**Q7 — incident timeline**
+
+Correlating `access.log`, `error.log`, and `application.log` reveals **4 failure windows** accounting for all 95 server errors (`5xx`):
+
+| Incident | Time Window (UTC) | `error.log` Evidence | `access.log` Evidence (Q3, Q4, Q6) | `application.log` Evidence | Next Successful Request |
+|---|---|---|---|---|---|
+| **1** | `11:05:02 — 11:09:57` | 59 lines: `Connection refused` (`172.23.0.12:8080`) | 40 `502`s on `/`, `/health`, `/records`, `/counter`; 19 retries on `/ready` & `/instance` succeeded on `app-01` (Q6) | 0 lines for `app-02`; `app-01` logged normally | `11:10:02.532Z` (`lab-000242`, `app-02`, `/health`, 200) |
+| **2** | `11:12:09 — 11:15:52` | 0 lines | 31 `503`s on `/counter` (16) and `/ready` (15); `request_time`: 2.019s–2.035s | 31 ERROR lines: `dependency: redis`, `error_type: TimeoutError` | `11:16:07.534Z` (`lab-000388`, `/ready`, 200) |
+| **3** | `11:20:07 — 11:21:45` | 0 lines | 16 `503`s on `/records` (8) and `/ready` (8); `request_time`: 0.021s–0.088s | 16 ERROR lines: `dependency: postgres`, `error_type: InvalidPassword` | `11:22:07.582Z` (`lab-000532`, `/ready`, 200) |
+| **4** | `11:25:14 — 11:26:47` | 8 lines: `upstream timed out` on `/records` | 8 `504`s on `/records`; `request_time`: 2.001s | 8 lines for `/records`: `status: 200`, `duration_ms: 2700.0` | `11:27:12.576Z` (`lab-000654`, `/records`, 200) |
+
+---
 
 ## Conclusions and limits
