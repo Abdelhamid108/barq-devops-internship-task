@@ -506,3 +506,14 @@ Correlating `access.log`, `error.log`, and `application.log` reveals **4 failure
 ---
 
 ## Conclusions and limits
+
+**Q9 — proxy/connectivity issues versus dependency/application issues**
+
+| Error Status | Category | What Proves It |
+|---|---|---|
+| **502 Bad Gateway** | Proxy / Connectivity | `error.log` records OS socket errors (`connect() failed (111: Connection refused)` to `172.23.0.12:8080`), while `application.log` has 0 entries from `app-02`. |
+| **504 Gateway Timeout** | Proxy / Connectivity | `error.log` records `upstream timed out (110: Operation timed out)` on `/records`, while `application.log` shows the backend finished late (`duration_ms: 2700.0`). |
+| **503 Service Unavailable** | Dependency / Application | `error.log` has 0 entries (proxy connection succeeded), while `application.log` explicitly logs `event: dependency_error` (`redis`: `TimeoutError`, `postgres`: `InvalidPassword`). |
+| **404 Not Found** | Application / Route | `error.log` has 0 entries, while `application.log` logs `status: 404` for the nonexistent route `/missing`. |
+
+---
