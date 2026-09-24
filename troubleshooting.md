@@ -35,7 +35,7 @@ Keep chronological entries. Copy this block for each meaningful investigation.
 
 ---
 
-## Entry 02 / 24/09/2026 / 9:20 AM
+## Entry 02 / 24/09/2026 / 8:35 AM
 - Symptom: After applying the health-check fix and completing the log analysis, testing the live environment showed that the application was unable to serve traffic on the root endpoint /. 
 - Hypothesis: NGINX is not correctly accepting HTTP traffic on port 8080.
 - Command or test: 
@@ -81,7 +81,7 @@ curl: (56) Recv failure: Connection reset by peer
 - Remaining uncertainty: The remaining 502 Bad Gateway indicates that NGINX cannot successfully communicate with the upstream application/backend. The exact upstream cause has not yet been established and requires further investigation.
 
 ---
-## Entry 03 / 24/09/2026 / 9:52 AM
+## Entry 03 / 24/09/2026 / 8:43 AM
 
 - Symptom: After fixing the Docker-to-NGINX port mapping, the application root endpoint / returned HTTP 502 Bad Gateway from NGINX.
 - Hypothesis: NGINX is unable to successfully communicate with the upstream application/backend.
@@ -135,13 +135,93 @@ Cache-Control: no-store
 - Remaining uncertainty: The fix was verified through app-01, but app-02 has not yet been independently verified. Additionally, only the root endpoint (/) has been tested; dependency-backed endpoints (/ready, /records, /counter) still require verification.
 
 ---
-## Entry 04 / 24/09/2026 / 9:59 AM
+## Entry 04 / 24/09/2026 / 4:39 PM
 - Symptom: he application endpoints were working, but every response returned app-01 as the instance ID. I expected requests to be served by both app-01 and app-02
 - Hypothesis: The issue could be caused by either the application having the instance ID hardcoded or NGINX not correctly routing requests to both backend instances.
 - Command or test:
+```bash
+curl -i http://localhost:8080/
+```
+
 - Actual output:
-- Failed attempt and what changed your thinking:
-- Root cause:
+```text 
+HTTP/1.1 200 OK
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 13:39:47 GMT
+Content-Type: application/json
+Content-Length: 100
+Connection: keep-alive
+X-Instance-ID: app-01
+X-Request-ID: 3084b65ea95aaf9c3206d28d7c23da99
+Cache-Control: no-store
+
+{"instance_id":"app-01","message":"Welcome to BARQ Systems","service":"barq-api","version":"2.0.0"}
+```
+
+- Failed attempt and what changed your thinking: No failed attempt. The investigation proceeded by checking the NGINX logs, application code, and Docker Compose environment configuration. The NGINX logs confirmed that both backend instances were being served. The application code showed that the instance ID came from an environment variable, which led to checking the Docker Compose configuration and finding that app-02 was incorrectly assigned app-01 as its instance ID.
+- Root cause: The Docker Compose environment configuration assigned app-01 as the instance ID for both backend containers. Therefore, even when NGINX routed a request to app-02, the application reported itself as app-01.
+- Fix: Updated the environment configuration so each backend receives its correct instance ID in docker-compose.yml:
+- Retest evidence:
+```bash
+curl -i http://localhost:8080/
+
+#Output: 
+HTTP/1.1 200 OK
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 15:58:37 GMT
+Content-Type: application/json
+Content-Length: 100
+Connection: keep-alive
+X-Instance-ID: app-01
+X-Request-ID: 5e5e59dd2a971997acde900256400ef9
+Cache-Control: no-store
+
+{"instance_id":"app-01","message":"Welcome to BARQ Systems","service":"barq-api","version":"2.0.0"}
+```
+```bash
+curl -i http://localhost:8080/
+
+#Output:
+HTTP/1.1 200 OK
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 15:58:40 GMT
+Content-Type: application/json
+Content-Length: 100
+Connection: keep-alive
+X-Instance-ID: app-02
+X-Request-ID: 8c1f447f645c500135bfa8e32b19f838
+Cache-Control: no-store
+
+{"instance_id":"app-02","message":"Welcome to BARQ Systems","service":"barq-api","version":"2.0.0"}
+```
+- Related commit: `8718004` (fix(compose,env): assign correct instance ID to app-02)
+- Remaining uncertainty: The instance ID issue was identified and fixed, but the remaining application endpoints have not yet been independently tested. Further testing is required to confirm that all endpoints work correctly through both backend instances.
+
+---
+## Entry 05 / 24/09/2026 / 7:38 PM
+- Symptom: : The /ready endpoint returns HTTP 503 Service Unavailable. The response shows that both PostgreSQL and Redis are reported as unavailable, and the barq_api status is not_ready.
+- Hypothesis: coonectivity error between app and it dependecy can be due to incorrect ip adresses or ports  
+- Command or test:
+```
+curl -i http://127.0.0.1:8080/ready
+
+```
+- Actual output:
+```text
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Server: nginx/1.28.3
+Date: Thu, 24 Sep 2026 16:58:40 GMT
+Content-Type: application/json
+Content-Length: 149
+Connection: keep-alive
+X-Instance-ID: app-01
+X-Request-ID: 1e54d36a498e7ee87b53dcb6f3b64b09
+Cache-Control: no-store
+
+{"dependencies":{"postgres":"unavailable","redis":"unavailable"},"instance_id":"app-01","service":"barq-api","status":"not_ready","version":"2.0.0"}
+```
+
+- Failed attempt and what changed your thinking: 
 - Fix:
 - Retest evidence:
 - Related commit:
