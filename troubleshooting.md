@@ -77,7 +77,7 @@ curl: (56) Recv failure: Connection reset by peer
   </body>
   </html>
   ```
-- Related commit:
+- Related commit: `0b5ef2b` (fix(compose): correct public NGINX port mapping from 8080>81 to 8080>80)  
 - Remaining uncertainty: The remaining 502 Bad Gateway indicates that NGINX cannot successfully communicate with the upstream application/backend. The exact upstream cause has not yet been established and requires further investigation.
 
 ---
