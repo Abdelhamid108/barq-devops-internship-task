@@ -517,3 +517,21 @@ Correlating `access.log`, `error.log`, and `application.log` reveals **4 failure
 | **404 Not Found** | Application / Route | `error.log` has 0 entries, while `application.log` logs `status: 404` for the nonexistent route `/missing`. |
 
 ---
+
+**Q10 — what the logs do not prove & next checks**
+
+### 1. What the logs do not prove
+- **`app-02` failure reason:** Logs show `Connection refused`, but cannot prove whether the container crashed, was OOM-killed, restarted, or failed a Docker health check.
+- **Endpoint retry disparity:** Logs show that only `/ready` and `/instance` were retried upstream during the 502 outage, but cannot prove *why* other endpoints (`/`, `/health`, `/records`, `/counter`) were not retried (e.g. `proxy_next_upstream` directive settings).
+- **Redis timeout cause:** Logs show socket `TimeoutError`, but cannot prove whether Redis crashed, hit network latency/packet loss, or reached client connection limits.
+- **PostgreSQL credential mismatch source:** Logs show `InvalidPassword`, but cannot prove whether credentials in `.env`, Docker Compose environment variables, or secrets were changed or mismatched.
+- **`/records` query delay trigger:** Logs show `duration_ms: 2700`, but cannot prove whether the latency was caused by missing table indexes, database lock contention, or CPU throttling.
+
+### 2. What to check next in a running environment
+- **Container health & lifecycle:** Check container run states, exit codes, restart counters, and OOM killer terminations.
+- **Service & engine logs:** Review internal PostgreSQL and Redis engine logs for database authentication failures, socket rejections, or crash events.
+- **Environment variables & `.env`:** Verify credential consistency (database username, password, hostnames) across `.env`, Docker Compose definitions, and application runtimes.
+- **Inter-container network connectivity:** Test internal Docker DNS resolution and TCP port reachability between NGINX, the Flask backends, and backing services across their defined networks.
+- **NGINX configuration:** Inspect `nginx.conf` for upstream server definitions, proxy timeout directives, and endpoint-level retry settings (`proxy_next_upstream`).
+- **Database schema & query performance:** Profile database indexes, locks, and query execution plans on the `records` table to investigate slow queries.
+
