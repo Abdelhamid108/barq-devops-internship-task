@@ -5,7 +5,9 @@ set -euo pipefail
 APP_URL="${APP_URL:-http://127.0.0.1:8080}"
 POSTGRES_USER="${POSTGRES_USER:-barq_app}"
 POSTGRES_DB="${POSTGRES_DB:-barq_tasks}"
-BACKUP_DIR="${BACKUP_DIR:-database}"
+BACKUP_DIR="${BACKUP_DIR:-backups}"
+
+mkdir -p "$BACKUP_DIR"
 
 create_record() {
   local title="$1"
