@@ -1,0 +1,83 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:    
+
+jobs:
+  compose-syntax-check:
+    name: Compose Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compose install
+        uses: docker/setup-compose-action@v2.4.0
+      
+      - name: syntax check  
+        run: docker-compose config --quiet
+    
+  compose-build-validate:
+    name: Compose Image Build and validate
+    needs: compose-syntax-check 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Docker Compose install
+        uses: docker/setup-compose-action@v2.4.0
+      
+      - name: Docker Compose build
+        run: docker-compose build
+
+      - name:  Image Scurty scan 
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "barq-assessment-app-01:latest"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "all"
+          severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+      
+      - name: Create .env file
+        run: |
+          cat > .env <<EOF
+          PUBLIC_PORT=8080
+          POSTGRES_USER=barq_app
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=barq_tasks
+          EOF
+      
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Docker Compose up
+        run: docker-compose -p barq-assessment up -d
+
+      - name: Wait for stack readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/ready > /dev/null 2>&1; then
+              echo "Stack is ready after ${i}s"; exit 0
+            fi
+            echo "Waiting... attempt ${i}/30"; sleep 3
+          done
+          echo "Stack failed to become ready" >&2; exit 1
+
+      - name: Run validation
+        run: python validate.py
+      
+      
+        
+  
+  
+      
+  
