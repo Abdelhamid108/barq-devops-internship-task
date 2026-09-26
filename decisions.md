@@ -89,3 +89,21 @@ Record at least 5 decisions. Include assumptions and limits.
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | `postgres:16-alpine@sha256:cf78...` (Starter) | Alpine 3.21 | 74 | 1 | 30 | 28 | 14 | 1 | 28 | 46 | 420 MB | Starter Baseline |
 | **`postgres:16-alpine@sha256:7218...` (Chosen)** | **Alpine 3.24.2** | **46** | 1 | **21** | **21** | **2** | 1 | **0 (Clean!)** | 46 | **420 MB** | **0 OS CVEs, Verified** |
+
+---
+
+## Decision 5: Single-Job CI Pipeline Architecture vs. Multi-Job Model
+- Choice: Implement a single unified job (`build-scan-validate`) in GitHub Actions rather than the standard multi-job pipeline pattern.
+- Why:
+  1. Standard vs. Task Scope: In enterprise CI/CD, the standard pattern is separating stages into independent jobs (`build` -> `scan` -> `test`). However, separate GitHub Actions jobs run on isolated ephemeral VMs that do not share the Docker daemon.
+  2. Avoidance of Tarball Overhead: Without an external container registry to push and pull images, passing built images across separate jobs requires archiving them as tarballs (`docker save`), uploading them via `actions/upload-artifact`, downloading them, and reloading them (`docker load`). This introduces heavy disk I/O serialization and runner latency with zero functional gain.
+  3. Self-Contained Repository Constraint: Pushing to a registry requires external service dependencies and credentials (PAT / secrets), which falls outside the self-contained scope of this project.
+  4. Docker Daemon Locality: Keeping all steps in a single job preserves local layer caching: the image built in step 4 is immediately scanned by Trivy in step 5 and launched by `docker compose` in step 8 to run `validate.py`, executing the entire pipeline in **57 seconds**.
+- Alternative:
+  - Multi-Job Pipeline with External Registry (Industry Standard): Separate jobs where `build` pushes tagged images to GHCR/Docker Hub and subsequent jobs pull them.
+    *Limitation:* Requires external registry infrastructure and credentials.
+  - Multi-Job Pipeline with Image Tarballs: Passing images between jobs using `docker save` and workflow artifacts.
+    *Limitation:* Substantial I/O serialization and transfer overhead.
+- Trade-off: Departs from strict multi-job separation of concerns, but eliminates unnecessary image serialization overhead and keeps the pipeline hermetic and fast.
+- Evidence / commit: Commit `cf9e925` (`ci: implement automated build-scan-validate pipeline with trivy sarif scanning`), verified live in GitHub Actions run (57s total execution, 21/21 checks passed, Trivy SARIF uploaded).
+- Production improvement: In an enterprise environment, transition to the standard multi-job architecture with a secure private registry (e.g., AWS ECR or Google Artifact Registry) and OIDC-based authentication.
