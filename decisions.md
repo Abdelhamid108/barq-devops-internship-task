@@ -17,9 +17,52 @@ Record at least 5 decisions. Include assumptions and limits.
 - Production improvement: Evaluate Google Distroless or Chainguard Wolfi images to eliminate the shell and package manager entirely from production runtime.
 
 ### Empirical Image Evaluation Matrix:
-| Base Image | OS Base | Total CVEs | CRITICAL | HIGH | OS-Level CVEs | Image Size | Test Suite Status |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `python:3.12-slim-bookworm` (Starter) | Debian 12 | 282 | 1 (`zlib1g`) | 6 | 276 | 222 MB | Baseline Starter |
-| `python:3.13-slim-trixie` (Updated Debian) | Debian 13 | 159 | 0 | 7 | 156 | 222 MB | 21/21 Passed |
-| **`python:3.13-alpine` (Chosen)** | **Alpine 3.24** | **3** | **0** | **2** | **0 (Clean!)** | **112 MB** | **All 4 Suites Passed (100%)** |
+| Base Image | OS Base | Total CVEs | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN | OS CVEs | Lang CVEs | Image Size | Test Suite Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `python:3.12-slim-bookworm` (Starter) | Debian 12 | **282** | 5 | 58 | 112 | 103 | 4 | 276 | 6 | 222 MB | Baseline Starter |
+| `python:3.13-slim-trixie` (Updated Debian) | Debian 13 | **159** | **0** | 46 | 54 | 57 | 2 | 156 | 3 | 222 MB | 21/21 Passed |
+| **`python:3.13-alpine` (Chosen)** | **Alpine 3.24.2** | **3** | **0** | **2** | 1 | 0 | 0 | **0** | 3 | **112 MB** | **All 4 Suites Passed (100%)** |
 
+---
+
+## Decision 2: NGINX Reverse Proxy Image Selection & Hardening
+- Choice: Upgrade NGINX base image from `nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236` to `nginx:stable-alpine3.24-slim@sha256:32463212baf0e7d91aded2e9b843a4f2b9e017804b8c9d5bae7b51dcef64389c`.
+- Why:
+  1. Complete Vulnerability Elimination: The starter image contained 200 total vulnerabilities (including 2 CRITICAL and 55 HIGH CVEs in musl, libcrypto, and NGINX HTTP/2). Migrating to `stable-alpine3.24-slim` eliminated all CVEs, achieving **0 vulnerabilities (100% clean across all severities)**.
+  2. Extreme Size Optimization: Reduced container image size by 77% from 93.4 MB down to **21 MB**, significantly shrinking the attack surface.
+  3. Reverse Proxy Reliability: Verified with `wget --spider` health checks and routing `/health`, `/ready`, `/records`, and `/instance` to backends with sub-4ms response latencies.
+- Alternative:
+  - `nginx:1.28-alpine` (Starter): Functional, but leaves 200 unpatched CVEs on the public host port (8080/8090).
+  - `nginx:latest` (Debian-based): Large (>140 MB) and introduces Debian OS package vulnerabilities.
+- Trade-off: The slim variant removes non-essential NGINX modules and extra utilities, requiring health checks to use lightweight tools (`wget --spider`).
+- Evidence / commit: Commit `6f4275c` (`refactor(docker): upgrade nginx to stable-alpine3.24-slim to achieve zero vulnerabilities`).
+- Production improvement: Integrate ModSecurity / Coraza Web Application Firewall (WAF) module and automated TLS certificate rotation with Let's Encrypt / Cert-Manager.
+
+### Empirical NGINX Evaluation Matrix:
+| Image | Base | Total CVEs | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN | Image Size | Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `nginx:1.28-alpine` (Starter) | Alpine 3.23.3 | 200 | 2 | 55 | 92 | 49 | 2 | 93.4 MB | Baseline Starter |
+| **`nginx:stable-alpine3.24-slim` (Chosen)** | **Alpine 3.24.2** | **0** | **0** | **0** | **0** | **0** | **0** | **21 MB** | **100% Clean, Healthy** |
+
+---
+
+## Decision 3: Redis In-Memory Cache Hardening & Persistence Strategy
+- Choice: Upgrade Redis base image to `redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499`, configure Append-Only File persistence (`--appendonly yes`), disable RDB snapshots (`--save ""`), and mount `redis-data:/data`.
+- Why:
+  1. OpenSSL Vulnerability Patching: The starter release `redis:7.4-alpine` contained 26 total vulnerabilities, including 2 HIGH CVEs in `libcrypto3`/`libssl3` (`CVE-2026-45447` OpenSSL PKCS7_verify Use-After-Free). Updating to patch version 7.4.11 on Alpine 3.21.8 eliminated all CVEs, reaching **0 vulnerabilities (100% clean across all severities)**.
+  2. Atomic Counter Durability: Enables AOF (`--appendonly yes`) on persistent volume `redis-data` so `/counter` increments survive container restarts without data loss.
+  3. Eliminating Fork Latency Spikes: Disabling RDB snapshots (`--save ""`) prevents copy-on-write memory doubling and disk I/O freezes under high load.
+  4. Resource Isolation: Limits Redis container to `0.5 CPU` and `256M RAM` to prevent unbounded memory growth from triggering host OOM killer.
+- Alternative:
+  - `redis:7.4-alpine` (Starter): Contained 26 vulnerabilities including 2 HIGH OpenSSL CVEs.
+  - Periodic RDB Snapshotting: Periodically dumps database to disk, but risks losing mutations between snapshot intervals.
+  - Ephemeral Redis (No Persistence): Risks losing counter state on container recreation.
+- Trade-off: AOF generates continuous sequential write disk I/O and monotonic file growth requiring periodic log compaction (`BGREWRITEAOF`).
+- Evidence / commit: Commit `1386ef3` (`refactor(docker): upgrade redis to 7.4.11-alpine to eliminate OpenSSL vulnerabilities`), verified with Trivy scan (0 CVEs) and validated `/counter` increments across container recreation.
+- Production improvement: Set `maxmemory 200mb` with LRU eviction policy (`allkeys-lru`) and Redis Sentinel or Redis Cluster replication for high availability.
+
+### Empirical Redis Evaluation Matrix:
+| Image | Base | Total CVEs | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN | Image Size | Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `redis:7.4-alpine` (Starter) | Alpine 3.21.7 | 26 | 0 | 2 | 10 | 14 | 0 | 57.8 MB | Starter baseline |
+| **`redis:7.4.11-alpine` (Chosen)** | **Alpine 3.21.8** | **0** | **0** | **0** | **0** | **0** | **0** | **57.8 MB** | **100% Clean, Verified** |
