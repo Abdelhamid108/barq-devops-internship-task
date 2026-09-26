@@ -157,12 +157,12 @@ def main():
     record(check_backend_response(base_url, number_of_requests=10))
 
     print("\nChecking Container Health.........\n")
-    containers = ["postgres", "redis", "app-01", "app-02", "nginx"]
+    containers = ["postgres", "redis", "app-01", "app-02", "nginx","app-03"]
     for c in containers:
         record(readiness_check(c))
 
     print("\nChecking Prohibited Host Ports.........\n")
-    for c in ["postgres", "redis", "app-01", "app-02"]:
+    for c in ["postgres", "redis", "app-01", "app-02","app-03"]:
         record(check_exposed_ports(c))
 
     print("\nChecking Network Isolation........\n")
