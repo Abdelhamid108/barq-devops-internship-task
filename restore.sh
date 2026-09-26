@@ -2,6 +2,9 @@
 set -euo pipefail
 
 # Configuration with defaults
+if [[ -f ".env" ]]; then
+  PUBLIC_PORT="${PUBLIC_PORT:-$(grep -E '^PUBLIC_PORT=' .env | cut -d '=' -f2 | tr -d ' "\r')}"
+fi
 APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_PORT:-8080}}"
 PROJECT_NAME="${PROJECT_NAME:-barq-assessment}"
 CONTAINER_NAME="${CONTAINER_NAME:-postgres}"
