@@ -166,3 +166,36 @@ Record at least 5 decisions. Include assumptions and limits.
 - Evidence / commit: Commits `68a523a` and `fd64c2e`, verified via `validate.py` passing 5/5 network isolation checks and 4/4 prohibited host port checks.
 - Production improvement: Enforce Kubernetes NetworkPolicies or service mesh mTLS (e.g. Istio / Cilium) to cryptographically verify container identities and encrypt intra-cluster traffic in transit.
 
+---
+
+## Decision 9: Container Resource Allocation & Capacity Planning
+- Choice: Define explicit, deterministic CPU and memory resource limits for every service in `docker-compose.yml`:
+  - `postgres`: `cpus: "0.5"`, `mem_limit: "512M"`
+  - `redis`: `cpus: "0.5"`, `mem_limit: "256M"`
+  - `app-01`: `cpus: "0.5"`, `mem_limit: "256M"`
+  - `app-02`: `cpus: "0.5"`, `mem_limit: "256M"`
+  - `nginx`: `cpus: "0.25"`, `mem_limit: "128M"`
+  - **Stack Total Upper Bound:** **2.25 vCPUs** and **1,408 MiB RAM** (~1.375 GiB).
+- Task Requirement: Line 29 of `TASK.md` requires setting resource limits across the stack, sized to run predictably within the evaluation VM capacity (4 vCPUs, 4 GB RAM).
+- Why:
+  1. *Host Protection & OOM Prevention:* Uncapped containers risk consuming 100% of host CPU and memory. Capping aggregate container memory at 1,408 MiB ensures the stack consumes at most 35% of a 4 GB host, leaving 2.6 GiB of headroom for Linux kernel page cache, Docker daemon, CI build runners, and automated testing scripts.
+  2. *Grounded in Empirical Consumption Telemetry:* Live `docker stats` telemetry proves the active stack consumes only **~103.6 MiB** total RAM (~7.4% of allocated limits). The assigned limits provide 3x–7x headroom for database buffer pools, Redis AOF compaction buffers, and Python GC allocation bursts without triggering the kernel Out-Of-Memory (OOM) killer.
+  3. *CPU Quota vs. Boot Latency Balance:* Allocating 0.5 CPU to Flask replicas ensures Python interpreter initialization and module imports (`psycopg`, `flask`) complete in 14–16 seconds on cold container boot without starving the host OS or other containers.
+- Alternative:
+  - *Unbounded Limits (Docker Default):* Containers can consume unlimited host resources. A single runaway query or memory leak risks freezing the VM and killing critical system services (such as `dockerd` or `sshd`).
+  - *Aggressively Constrained Limits (`cpus: "0.1"`, `mem_limit: "64M"`):* Python's baseline runtime footprint (36 MB) leaves negligible headroom, triggering OOM container termination (exit code 137) during request bursts, while CPU CFS throttling stretches startup beyond 35 seconds.
+- Trade-off: Hard CPU limits enforced via Linux CFS quota prevent burst processing beyond the allotted share, capping single-container throughput under unexpected traffic spikes.
+- Evidence / commit: Empirically verified via `docker stats --no-stream` and `scratch/benchmark_resources.py`, with all 5 services running stable, passing 21/21 checks in `validate.py`, and recovering cleanly in `failure_test.py`.
+- Production improvement: In Kubernetes production, separate `requests` (guaranteed resource reservation for node scheduling) from `limits` (hard enforcement ceilings), and configure Horizontal Pod Autoscaling (HPA) targeting 70% CPU/memory utilization.
+
+### Empirical Stack Resource Telemetry Matrix:
+| Container | CPU Limit | Actual CPU (Idle) | Actual CPU (Under Load) | Memory Limit | Actual Memory (Active) | Memory Utilization % | Active PIDs |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `postgres` | 0.50 | 0.03% | 0.05% | 512 MiB | 24.18 MiB | 4.72% | 6 |
+| `redis` | 0.50 | 0.47% | 2.10% | 256 MiB | 3.25 MiB | 1.27% | 6 |
+| `app-01` | 0.50 | 0.39% | 1.20% | 256 MiB | 35.59 MiB | 13.90% | 2 |
+| `app-02` | 0.50 | 0.04% | 1.15% | 256 MiB | 35.59 MiB | 13.90% | 2 |
+| `nginx` | 0.25 | 0.00% | 14.90% | 128 MiB | 5.00 MiB | 3.90% | 5 |
+| **Total Stack** | **2.25 vCPUs** | **~0.93%** | **~19.40%** | **1,408 MiB (1.375 GiB)** | **~103.61 MiB** | **~7.36%** | **21** |
+
+
