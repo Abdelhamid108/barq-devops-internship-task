@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
 """Candidate deliverable: implement environment validation."""
 
+import json
 import os
 import subprocess
 import sys
-import requests
+import urllib.error
+import urllib.request
 
 
 def endpoint_check(url, path):
+    full_url = url + path
     try:
-        response = requests.get(
-            url + path,
-            timeout=5
-        )
+        req = urllib.request.Request(full_url)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                print(f"PASS {full_url} is reachable")
+                return True
+            else:
+                print(
+                    f"FAIL {full_url} "
+                    f"status code {response.status}"
+                )
+                return False
 
-        if response.status_code == 200:
-            print(f"PASS {url + path} is reachable")
-            return True
-        else:
-            print(
-                f"FAIL {url + path} "
-                f"status code {response.status_code}"
-            )
-            return False
-
+    except urllib.error.HTTPError as e:
+        print(f"FAIL {full_url} status code {e.code}")
+        return False
     except Exception as e:
-        print(f"FAIL {url + path} error {e}")
+        print(f"FAIL {full_url} error {e}")
         return False
 
 
@@ -121,18 +124,18 @@ def check_networks(container_name, expected_networks):
 
 def check_backend_response(url, number_of_requests=10):
     seen = set()
+    full_url = url + "/instance"
     try:
         for _ in range(number_of_requests):
-            response = requests.get(
-                url + "/instance",
-                timeout=5
-            )
-            if response.status_code == 200:
-                instance_id = response.json().get("instance_id")
-                seen.add(instance_id)
-            else:
-                print(f"FAIL /instance status code {response.status_code}")
-                return False
+            req = urllib.request.Request(full_url)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    instance_id = data.get("instance_id")
+                    seen.add(instance_id)
+                else:
+                    print(f"FAIL /instance status code {response.status}")
+                    return False
 
         if seen == {"app-01", "app-02"}:
             print(f"PASS both backends responded: {seen}")
@@ -141,6 +144,9 @@ def check_backend_response(url, number_of_requests=10):
             print(f"FAIL expected both backends, but saw: {seen}")
             return False
 
+    except urllib.error.HTTPError as e:
+        print(f"FAIL /instance status code {e.code}")
+        return False
     except Exception as e:
         print(f"FAIL /instance error {e}")
         return False

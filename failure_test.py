@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Candidate deliverable: stop one backend, measure traffic, restore it and verify."""
-import sys
+import json
 import subprocess
-import requests
+import sys
 import time
+import urllib.error
+import urllib.request
 
 # function to stop the container
 def stop_container(container_name):
@@ -32,12 +34,12 @@ def measure_traffic(url,endpoint,requests_count):
     }
     for _ in range(requests_count):
         try:
-            response = requests.get(url + endpoint,timeout = 5)
-            # check if the response is 200 and increase the success requests counter and if not increase the failed requests counter
-            if response.status_code == 200:
-                stats["success_requests"] += 1
-            else:
-                stats["failed_requests"] += 1
+            req = urllib.request.Request(url + endpoint)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    stats["success_requests"] += 1
+                else:
+                    stats["failed_requests"] += 1
         except Exception:
             stats["failed_requests"] += 1
     # calculate the success rate
@@ -49,13 +51,14 @@ def measure_traffic(url,endpoint,requests_count):
 def verify_recovery(url, target_instance,max_attempts):
     for attempt in range(max_attempts):
         try:
-            response = requests.get(url+"/instance", timeout=5)
-            # check if the response is 200 and the instance_id is the same as the target_instance
-            if response.status_code == 200:
-                current_instance = response.json().get("instance_id")
-                if current_instance == target_instance:
-                    return True
-        except Exception :
+            req = urllib.request.Request(url + "/instance")
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    current_instance = data.get("instance_id")
+                    if current_instance == target_instance:
+                        return True
+        except Exception:
             pass # if the request fails we ignore it and try again 
         time.sleep(1)
     return False

@@ -56,9 +56,6 @@ jobs:
           POSTGRES_DB=barq_tasks
           EOF
 
-      - name: Install test dependencies
-        run: pip install requests
-
       - name: Start Docker Compose stack
         run: docker compose -p barq-assessment up -d --wait
 
