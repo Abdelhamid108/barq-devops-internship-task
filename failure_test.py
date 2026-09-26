@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Candidate deliverable: stop one backend, measure traffic, restore it and verify."""
 import json
+import os
 import subprocess
 import sys
 import time
@@ -71,8 +72,25 @@ def print_trrafic_report(stats):
     print(f"Failed requests: {stats['failed_requests']}")
     print(f"Success rate: {stats['success_rate']}%")
 
+
+def get_base_url():
+    if len(sys.argv) > 1:
+        return sys.argv[1].rstrip("/")
+    port = os.environ.get("PUBLIC_PORT")
+    if not port and os.path.exists(".env"):
+        try:
+            with open(".env") as f:
+                for line in f:
+                    if line.startswith("PUBLIC_PORT="):
+                        port = line.split("=", 1)[1].strip().strip('"\'')
+                        break
+        except Exception:
+            pass
+    return f"http://127.0.0.1:{port or '8080'}"
+
+
 def main():
-    base_url = "http://localhost:8080"
+    base_url = get_base_url()
     target_instance = "app-01"
     
     try:
