@@ -37,16 +37,16 @@ jobs:
       - name: Docker Compose build
         run: docker compose build
 
-      - name:  Image Scurty scan 
+      - name: Image Security scan for the web app image
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: "barq-assessment-app-01:latest"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true
-          vuln-type: "all"
+          vuln-type: "os,library"
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
-      
+
       - name: Create .env file
         run: |
           cat > .env <<EOF
