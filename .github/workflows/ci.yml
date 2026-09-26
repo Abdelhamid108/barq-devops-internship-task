@@ -60,17 +60,7 @@ jobs:
         run: pip install requests
 
       - name: Docker Compose up
-        run: docker compose -p barq-assessment up -d
-
-      - name: Wait for stack readiness
-        run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/ready > /dev/null 2>&1; then
-              echo "Stack is ready after ${i}s"; exit 0
-            fi
-            echo "Waiting... attempt ${i}/30"; sleep 3
-          done
-          echo "Stack failed to become ready" >&2; exit 1
+        run: docker compose -p barq-assessment up -d --wait
 
       - name: Run validation
         run: python validate.py
