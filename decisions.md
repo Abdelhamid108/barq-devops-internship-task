@@ -141,3 +141,28 @@ Record at least 5 decisions. Include assumptions and limits.
 - Evidence / commit: Commit `c110ee3` (`fix(nginx): increase connect timeout to 3s with safety buffer over P95 latency`), verified with `failure_test.py` and `validate.py`.
 - Production improvement: In enterprise production, enable `proxy_next_upstream error timeout http_502 http_503;` to automatically retry surviving backends without user-facing errors.
 
+---
+
+## Decision 8: Dual-Tier Network Segmentation & Host Port Isolation
+- Choice: Partition the multi-container stack into two isolated Docker bridge networks (`frontend` and `backend`), isolate NGINX to `frontend`, isolate databases to `backend`, and unpublish all internal container host ports.
+- Task Requirement: The task mandates:
+  1. Connect NGINX + apps to `frontend`, and apps + PostgreSQL + Redis to `backend`.
+  2. Block direct NGINX access to PostgreSQL and Redis.
+  3. Publish only NGINX on host port 8080 (or 8090). Do not publish app, PostgreSQL, or Redis ports to the host.
+- Starter State vs. Implemented Fixes:
+  - Starter repository violations:
+    1. NGINX was connected to both `[frontend, backend]`, exposing PostgreSQL and Redis directly to the public reverse proxy.
+    2. PostgreSQL published host port `127.0.0.1:15432:5432`.
+    3. Redis published host port `127.0.0.1:16379:6379`.
+  - Implemented fixes:
+    1. Removed `backend` network from NGINX, strictly isolating it to `frontend` (Commit `68a523a`).
+    2. Removed prohibited host ports from PostgreSQL and Redis (Commit `fd64c2e`).
+    3. Kept Flask app replicas on both networks (`[frontend, backend]`) to act as the only authorized application-layer bridge.
+- Why: Implements zero-trust network microsegmentation. If the public-facing NGINX container is compromised, the attacker cannot reach database ports (5432, 6379) or query data directly.
+- Alternative:
+  - Flat Single Bridge Network: All containers share one network, allowing lateral movement from NGINX to databases.
+  - Host Port Exposure: Exposing internal ports allows unauthorized local processes to bypass NGINX and query databases directly.
+- Trade-off: Developers cannot connect host GUI database clients (such as DBeaver or TablePlus) directly to localhost. Ad-hoc queries and backups must be executed via `docker compose exec` into the containers.
+- Evidence / commit: Commits `68a523a` and `fd64c2e`, verified via `validate.py` passing 5/5 network isolation checks and 4/4 prohibited host port checks.
+- Production improvement: Enforce Kubernetes NetworkPolicies or service mesh mTLS (e.g. Istio / Cilium) to cryptographically verify container identities and encrypt intra-cluster traffic in transit.
+
