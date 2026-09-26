@@ -10,37 +10,26 @@ on:
   workflow_dispatch:    
 
 jobs:
-  compose-syntax-check:
-    name: Compose Syntax Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Compose install
-        uses: docker/setup-compose-action@v2.4.0
-      
-      - name: syntax check  
-        run: docker compose config --quiet
-    
-  compose-build-validate:
-    name: Compose Image Build and validate
-    needs: compose-syntax-check 
+  build-scan-validate:
+    name: Build, Scan, and Validate Stack
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Docker Compose install
+      - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2.4.0
-      
-      - name: Docker Compose build
+
+      - name: Validate Compose syntax
+        run: docker compose config --quiet
+
+      - name: Build application images
         run: docker compose build
 
-      - name: Image Security scan for the web app image
+      - name: Scan container image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: "barq-assessment-app-01:latest"
@@ -52,14 +41,13 @@ jobs:
           scanners: 'vuln,secret'
           severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
       
-      - name: Upload scan results to GitHub Security tab
+      - name: Upload security findings to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v4
         if: always() 
         with:
           sarif_file: "trivy-results.sarif"
 
-
-      - name: Create .env file
+      - name: Configure runtime environment (.env)
         run: |
           cat > .env <<EOF
           PUBLIC_PORT=8080
@@ -67,19 +55,12 @@ jobs:
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB=barq_tasks
           EOF
-      
-      - name: Install Python dependencies
+
+      - name: Install test dependencies
         run: pip install requests
 
-      - name: Docker Compose up
+      - name: Start Docker Compose stack
         run: docker compose -p barq-assessment up -d --wait
 
-      - name: Run validation
+      - name: Run end-to-end stack validation
         run: python validate.py
-      
-      
-        
-  
-  
-      
-  
