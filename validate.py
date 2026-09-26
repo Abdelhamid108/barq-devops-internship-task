@@ -14,22 +14,11 @@ def endpoint_check(url, path):
     try:
         req = urllib.request.Request(full_url)
         with urllib.request.urlopen(req, timeout=5) as response:
-            if response.status == 200:
-                print(f"PASS {full_url} is reachable")
-                return True
-            else:
-                print(
-                    f"FAIL {full_url} "
-                    f"status code {response.status}"
-                )
-                return False
-
+            return True , f"Status code is {response.status} and endpoint {path} is reachable"
     except urllib.error.HTTPError as e:
-        print(f"FAIL {full_url} status code {e.code}")
-        return False
+        return False , f"Status code is {e.code} and endpoint {path} is not reachable"
     except Exception as e:
-        print(f"FAIL {full_url} error {e}")
-        return False
+        return False , f"Error message: {e}"
 
 
 def readiness_check(container_name):
@@ -47,23 +36,18 @@ def readiness_check(container_name):
         )
 
     except Exception as e:
-        print(f"FAIL {container_name}: {e}")
-        return False
+        return False , f"Error message: {e}"
 
     status = result.stdout.strip()
 
     if status == "healthy":
-        print(f"PASS {container_name} is healthy")
-        return True
+        return True , f"container: {container_name} is healthy"
     elif status == "unhealthy":
-        print(f"FAIL {container_name} is unhealthy")
-        return False
+        return False , f"container: {container_name} is unhealthy"
     elif status == "starting":
-        print(f"WARN {container_name} is starting")
-        return False
+        return False , f"container: {container_name} is starting"
     else:
-        print(f"FAIL {container_name}: unknown status '{status}'")
-        return False
+        return False , f"container: {container_name} is unknown status"
 
 
 def check_exposed_ports(container_name):
@@ -83,15 +67,11 @@ def check_exposed_ports(container_name):
         output = result.stdout.strip()
 
         if not output or output in ("null", "map[]", "{}"):
-            print(f"PASS {container_name}: no host port")
-            return True
-
-        print(f"FAIL {container_name}: host port {output}")
-        return False
+            return True , f"container: {container_name} has no host port"
+        return False , f"container: {container_name} has host port {output}"
 
     except Exception as e:
-        print(f"FAIL {container_name}: error {e}")
-        return False
+        return False , f"container: {container_name} error message: {e}"
 
 
 def check_networks(container_name, expected_networks):
@@ -112,15 +92,11 @@ def check_networks(container_name, expected_networks):
         expected = set(expected_networks)
 
         if actual == expected:
-            print(f"PASS {container_name}: correct networks")
-            return True
-
-        print(f"FAIL {container_name}: expected {expected}, got {actual}")
-        return False
+            return True , f"container: {container_name} has correct networks"
+        return False , f"container: {container_name} has expected {expected} and got {actual}"
 
     except Exception as e:
-        print(f"FAIL {container_name}: error {e}")
-        return False
+        return False , f"container: {container_name} error message: {e}"
 
 def check_backend_response(url, number_of_requests=10):
     seen = set()
@@ -134,22 +110,17 @@ def check_backend_response(url, number_of_requests=10):
                     instance_id = data.get("instance_id")
                     seen.add(instance_id)
                 else:
-                    print(f"FAIL /instance status code {response.status}")
-                    return False
+                    return False , f"status code {response.status}"
 
         if seen == {"app-01", "app-02"}:
-            print(f"PASS both backends responded: {seen}")
-            return True
+            return True , f"both backends responded {seen}"
         else:
-            print(f"FAIL expected both backends, but saw: {seen}")
-            return False
+            return False , f"expected both backends, but saw {seen}"
 
     except urllib.error.HTTPError as e:
-        print(f"FAIL /instance status code {e.code}")
-        return False
+        return False , f"status code {e.code}"
     except Exception as e:
-        print(f"FAIL /instance error {e}")
-        return False
+        return False , f"error message {e}"
 
 
 def main():
