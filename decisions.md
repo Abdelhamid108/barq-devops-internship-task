@@ -124,3 +124,20 @@ Record at least 5 decisions. Include assumptions and limits.
   *Limitation:* Unnecessarily increases container image size and expands attack surface when `wget` is already present.
 - Evidence / commit: Commit `b957f9b` (`feat(compose): add NGINX healthcheck and enforce service_healthy startup order`), verified via `validate.py` (5/5 container health checks passed).
 - Production improvement: Expose dedicated Prometheus health metrics via `/stub_status` or an OpenTelemetry exporter to alert on upstream connection degradation before container restarts occur.
+
+---
+
+## Decision 7: NGINX Upstream Timeouts & Retries Grounded in Log Analysis
+- Choice: Set `proxy_connect_timeout 3s;`, `proxy_read_timeout 4s;`, and `proxy_next_upstream off;` in `nginx/nginx.conf`.
+- Why:
+  1. Based on Log Latency Data: Historical access logs showed a median latency of 54 ms and a 95th percentile (P95) latency of 2.001 s.
+  2. Fail-Fast with Safety Buffer: Setting connect timeout to 3s provides a 1-second safety buffer above P95 (2.001s) to prevent dropping slow requests, while failing fast within 3s instead of NGINX's default 60s freeze when a backend crashes.
+  3. Database Read Headroom: Setting read timeout to 4s gives sufficient time for PostgreSQL `/records` queries.
+  4. Task Requirement for Error Measurement: Keeping `proxy_next_upstream off` allows `./failure_test.py` to measure real errors during backend outage (e.g., 30%–40% availability), as required by the task and video demonstration.
+- Alternative:
+  - Default NGINX Timeouts (60s): Leaves users waiting for 60 seconds during container failure.
+  - Aggressive 2s Timeout: Too close to the 2.001s P95 threshold, risking false-positive errors during small load spikes.
+- Trade-off: Stopped backends return 502 Bad Gateway immediately instead of being silently retried.
+- Evidence / commit: Commit `c110ee3` (`fix(nginx): increase connect timeout to 3s with safety buffer over P95 latency`), verified with `failure_test.py` and `validate.py`.
+- Production improvement: In enterprise production, enable `proxy_next_upstream error timeout http_502 http_503;` to automatically retry surviving backends without user-facing errors.
+
