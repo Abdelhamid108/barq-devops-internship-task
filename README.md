@@ -8,8 +8,6 @@
 [![Security Review](https://img.shields.io/badge/security-10%20findings%20audited-success.svg)](security_review.md)
 [![Validation](https://img.shields.io/badge/validation-21%2F21%20checks%20pass-brightgreen.svg)](validate.py)
 
-Production-grade, highly resilient multi-container web application stack built for the BARQ Systems DevOps Internship Assessment. This project repairs, hardens, validates, and documents an intentionally broken Flask application deployed behind an NGINX reverse proxy with dedicated PostgreSQL 16 relational storage and Redis 7.4 in-memory caching.
-
 ---
 
 ## Architecture Overview
