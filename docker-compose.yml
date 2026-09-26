@@ -70,7 +70,7 @@ services:
       <<: *app-env
       INSTANCE_ID: "app-02"
   nginx:
-    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    image: nginx:stable-alpine3.24-slim@sha256:32463212baf0e7d91aded2e9b843a4f2b9e017804b8c9d5bae7b51dcef64389c
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:80/health || exit 1"]
       interval: 5s
