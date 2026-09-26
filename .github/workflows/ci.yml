@@ -21,7 +21,7 @@ jobs:
         uses: docker/setup-compose-action@v2.4.0
       
       - name: syntax check  
-        run: docker-compose config --quiet
+        run: docker compose config --quiet
     
   compose-build-validate:
     name: Compose Image Build and validate
@@ -35,7 +35,7 @@ jobs:
         uses: docker/setup-compose-action@v2.4.0
       
       - name: Docker Compose build
-        run: docker-compose build
+        run: docker compose build
 
       - name:  Image Scurty scan 
         uses: aquasecurity/trivy-action@v0.35.0
@@ -60,7 +60,7 @@ jobs:
         run: pip install requests
 
       - name: Docker Compose up
-        run: docker-compose -p barq-assessment up -d
+        run: docker compose -p barq-assessment up -d
 
       - name: Wait for stack readiness
         run: |
