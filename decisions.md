@@ -168,7 +168,7 @@ Record at least 5 decisions. Include assumptions and limits.
 
 ---
 
-## Decision 9: Container Resource Allocation & Capacity Planning
+## Decision 9: Container Resource Allocation 
 - Choice: Define explicit, deterministic CPU and memory resource limits for every service in `docker-compose.yml`:
   - `postgres`: `cpus: "0.5"`, `mem_limit: "512M"`
   - `redis`: `cpus: "0.5"`, `mem_limit: "256M"`
