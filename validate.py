@@ -42,13 +42,8 @@ def readiness_check(container_name):
 
     if status == "healthy":
         return True , f"container: {container_name} is healthy"
-    elif status == "unhealthy":
-        return False , f"container: {container_name} is unhealthy"
-    elif status == "starting":
-        return False , f"container: {container_name} is starting"
-    else:
-        return False , f"container: {container_name} is unknown status"
-
+    
+    return False, f"container: {container_name} is {status}"
 
 def check_exposed_ports(container_name):
     try:
@@ -105,17 +100,12 @@ def check_backend_response(url, number_of_requests=10):
         for _ in range(number_of_requests):
             req = urllib.request.Request(full_url)
             with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode("utf-8"))
-                    instance_id = data.get("instance_id")
-                    seen.add(instance_id)
-                else:
-                    return False , f"status code {response.status}"
-
-        if seen == {"app-01", "app-02"}:
+                data = json.loads(response.read().decode("utf-8"))
+                seen.add(data.get("instance_id"))
+            
+        if seen >= {"app-01", "app-02"}:
             return True , f"both backends responded {seen}"
-        else:
-            return False , f"expected both backends, but saw {seen}"
+        return False , f"expected both backends, but saw {seen}"
 
     except urllib.error.HTTPError as e:
         return False , f"status code {e.code}"
@@ -123,27 +113,57 @@ def check_backend_response(url, number_of_requests=10):
         return False , f"error message {e}"
 
 
+results = []
+
+
+def record(result):
+    success, message = result
+    tag = "PASS" if success else "FAIL"
+    print(f"{tag}: {message}")
+    results.append(success)
+    return success
+
+
+def get_base_url():
+    if len(sys.argv) > 1:
+        return sys.argv[1].rstrip("/")
+    port = os.environ.get("PUBLIC_PORT")
+    if not port and os.path.exists(".env"):
+        try:
+            with open(".env") as f:
+                for line in f:
+                    if line.startswith("PUBLIC_PORT="):
+                        port = line.split("=", 1)[1].strip().strip('"\'')
+                        break
+        except Exception:
+            pass
+    return f"http://127.0.0.1:{port or '8080'}"
+
+
 def main():
-    base_url = "http://127.0.0.1:8080"
-    results = []
+    base_url = get_base_url()
+    results.clear()
+
+    print("\nChecking Public Access........\n")
+    if not record(endpoint_check(base_url, "/")):
+        sys.exit(1)
 
     print("\nChecking Public Endpoints........\n")
-    endpoints = ["/", "/health", "/ready", "/instance"]
+    endpoints = ["/health", "/ready", "/instance", "/records", "/counter"]
     for path in endpoints:
-        results.append(endpoint_check(base_url, path))
+        record(endpoint_check(base_url, path))
 
     print("\nChecking Backend Load Balancing........\n")
-    results.append(check_backend_response(base_url, number_of_requests=10))
-
+    record(check_backend_response(base_url, number_of_requests=10))
 
     print("\nChecking Container Health.........\n")
     containers = ["postgres", "redis", "app-01", "app-02", "nginx"]
     for c in containers:
-        results.append(readiness_check(c))
+        record(readiness_check(c))
 
     print("\nChecking Prohibited Host Ports.........\n")
     for c in ["postgres", "redis", "app-01", "app-02"]:
-        results.append(check_exposed_ports(c))
+        record(check_exposed_ports(c))
 
     print("\nChecking Network Isolation........\n")
     network_map = {
@@ -154,7 +174,7 @@ def main():
         "app-02": ["frontend", "backend"],
     }
     for c, expected in network_map.items():
-        results.append(check_networks(c, expected))
+        record(check_networks(c, expected))
 
     passed = sum(1 for r in results if r)
     total = len(results)
