@@ -107,3 +107,20 @@ Record at least 5 decisions. Include assumptions and limits.
 - Trade-off: Departs from strict multi-job separation of concerns, but eliminates unnecessary image serialization overhead and keeps the pipeline hermetic and fast.
 - Evidence / commit: Commit `cf9e925` (`ci: implement automated build-scan-validate pipeline with trivy sarif scanning`), verified live in GitHub Actions run (57s total execution, 21/21 checks passed, Trivy SARIF uploaded).
 - Production improvement: In an enterprise environment, transition to the standard multi-job architecture with a secure private registry (e.g., AWS ECR or Google Artifact Registry) and OIDC-based authentication.
+
+---
+
+## Decision 6: Container Health Checks & Service Dependency Ordering
+- Choice: Complete the container health check configuration across the stack by adding the missing health check for the NGINX reverse proxy using `wget --spider -q http://127.0.0.1:80/health || exit 1`.
+- Task Requirement: The task requires all containers in the multi-container stack to define working health checks and report a `healthy` status during validation (`validate.py`), and backend applications must not start until backing database services are fully healthy.
+- Existing vs. Added Implementation:
+  - Already implemented in starter stack:
+    1. `postgres`: Health check using native `pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}`.
+    2. `redis`: Health check using native `redis-cli ping`.
+    3. `app` (`app-01`, `app-02`): Health check using Python's standard library `urllib.request` probing `http://127.0.0.1:8080/health`.
+  - Added by candidate: `nginx` had no health check defined in the starter `docker-compose.yml`. We added an NGINX health check using BusyBox `wget --spider` probing `/health` locally with `interval: 5s`, `timeout: 3s`, `retries: 3`, and `start_period: 3s`.
+- Why `wget --spider`: The hardened `nginx:stable-alpine3.24-slim` base image does not include `curl`. It includes BusyBox `wget`. `--spider` verifies HTTP 200 response headers without downloading response content, and `-q` prevents log noise.
+- Alternative: Install `curl` inside the NGINX image (`apk add curl`).
+  *Limitation:* Unnecessarily increases container image size and expands attack surface when `wget` is already present.
+- Evidence / commit: Commit `b957f9b` (`feat(compose): add NGINX healthcheck and enforce service_healthy startup order`), verified via `validate.py` (5/5 container health checks passed).
+- Production improvement: Expose dedicated Prometheus health metrics via `/stub_status` or an OpenTelemetry exporter to alert on upstream connection degradation before container restarts occur.
