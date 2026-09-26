@@ -66,3 +66,26 @@ Record at least 5 decisions. Include assumptions and limits.
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | `redis:7.4-alpine` (Starter) | Alpine 3.21.7 | 26 | 0 | 2 | 10 | 14 | 0 | 57.8 MB | Starter baseline |
 | **`redis:7.4.11-alpine` (Chosen)** | **Alpine 3.21.8** | **0** | **0** | **0** | **0** | **0** | **0** | **57.8 MB** | **100% Clean, Verified** |
+
+---
+
+## Decision 4: PostgreSQL Image Digest Pinning & Persistent Volume Lifecycle
+- Choice: Pin PostgreSQL to `postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` on Alpine 3.24.2, mount named volume `postgres-data:/var/lib/postgresql/data`, attach `./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro`, and configure native `pg_isready` healthcheck.
+- Why:
+  1. Complete OS-Level CVE Elimination: Upgrading from the starter digest (`sha256:cf78...`) eliminated all 28 OS-level vulnerabilities, reducing total CVEs from 74 down to 46 (a 38% reduction) with **0 OS-level vulnerabilities**.
+  2. Volume Persistence Guarantee: Named volume `postgres-data` decouples database state from the container lifecycle. Empirically proven via `./backup.sh` where data survived complete container destruction and recreation (`docker compose rm -f postgres && docker compose up -d`).
+  3. Schema Determinism: The read-only (`:ro`) mount of `01-init.sql` prevents container runtime processes from tampering with the baseline DDL schema while guaranteeing automated table creation on first initialization.
+  4. Health-Dependent Initialization: Flask backend replicas (`app-01`, `app-02`) declare `depends_on: postgres: condition: service_healthy` using `pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}`, preventing connection refusals during startup.
+- Alternative:
+  - Ephemeral Container Storage (No Volume): Database records are destroyed whenever the container is updated, restarted, or recreated.
+  - Host Bind Mount (`./data:/var/lib/postgresql/data`): Introduces host file permission issues (UID 70 postgres inside container) and host OS filesystem lock discrepancies.
+  - Floating Tag (`postgres:16-alpine` unpinned): Risks non-deterministic CI builds and unexpected breaking changes during automated deployments.
+- Trade-off: Named volumes persist on the host independently of `docker compose down`, requiring automated disaster recovery routines (`backup.sh` and `restore.sh`) for data migration and cleanup.
+- Evidence / commit: Commit `7deed68` (`refactor(docker): update postgres:16-alpine to verified secure digest`), verified with `backup.sh` (volume retention test passed) and `restore.sh` (100% data restored).
+- Production improvement: Implement Write-Ahead Logging (WAL) archiving with `pgBackRest` or `wal-g` pushing to object storage (GCS/S3) and provision streaming replication read-replicas.
+
+### Empirical PostgreSQL Evaluation Matrix:
+| Image Digest | Base OS | Total CVEs | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN | OS CVEs | Lang CVEs | Image Size | Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `postgres:16-alpine@sha256:cf78...` (Starter) | Alpine 3.21 | 74 | 1 | 30 | 28 | 14 | 1 | 28 | 46 | 420 MB | Starter Baseline |
+| **`postgres:16-alpine@sha256:7218...` (Chosen)** | **Alpine 3.24.2** | **46** | 1 | **21** | **21** | **2** | 1 | **0 (Clean!)** | 46 | **420 MB** | **0 OS CVEs, Verified** |
